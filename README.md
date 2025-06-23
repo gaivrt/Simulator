@@ -27,8 +27,7 @@
 Simulator/
 ├── archetypes.py                   # 核心角色生成脚本
 ├── core_drives.yaml                # 定义角色核心驱动
-├── reaction_patterns.yaml          # 定义角色反应模式 (与 .txt 内容一致)
-├── reaction_patterns.txt           # 定义角色反应模式 (与 .yaml 内容一致)
+├── reaction_patterns.yaml          # 定义角色反应模式 
 ├── system_prompt.txt               # LLM 系统指令模板
 ├── tools/
 │   └── calculate_valid_combinations.py # 用于计算有效的角色元素组合
