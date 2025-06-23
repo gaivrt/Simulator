@@ -72,12 +72,22 @@ OPENAI_FREQUENCY_PENALTY = float(os.getenv("OPENAI_FREQUENCY_PENALTY", 0.3))
 OPENAI_PRESENCE_PENALTY = float(os.getenv("OPENAI_PRESENCE_PENALTY", 0.3))
 # ---------------------------------
 
+# --- 预设的理想字段 ---
+DESIRED_FIELDS = [
+    "Gender", "Age", "Occupation", "Topic", "Subtopic", "Situation",
+    "Event Time", "Event Location", "Event Participants", "Event Description",
+    "Emotional Experience Words", "Coped Strategies and Effects", "Goals and Expectations",
+    "persona_id"  # persona_id 是在脚本中生成的，也应保留
+]
+# --------------------
+
 # --- 全局配置与锁 ---
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", 10))
 shared_list_lock = threading.Lock()
 # --------------------
 
 # --- 资产加载 ---
+# K12
 TOPIC_SUBTOPIC_MAP = {
     "学业与成长": ["学业压力", "考试焦虑", "成绩困扰", "学习方法", "学习动力", "厌学情绪", "注意力不集中", "作业问题", "升学规划", "时间管理"],
     "人际与社交": ["同学关系", "交友困惑", "校园霸凌", "被孤立", "沟通技巧", "师生关系", "网络交友", "人际边界", "信任问题", "社交恐惧"],
@@ -88,6 +98,19 @@ TOPIC_SUBTOPIC_MAP = {
     "家长视角与求助": ["孩子社交问题", "孩子情绪行为异常", "孩子学业求助", "亲子沟通方法", "如何引导与帮助孩子", "担忧孩子网络使用"]
 }
 OCCUPATIONS_LIST = ["小学生", "初中生", "高中生", "老师", "家长"]
+"""
+# 高校
+TOPIC_SUBTOPIC_MAP = {
+    "学业与成长": ["学业压力", "考试焦虑", "成绩困扰", "学习方法", "学习习惯", "厌学情绪", "升学规划", "作业问题", "时间管理"],
+    "人际与社交": ["同学关系", "交友困惑", "校园霸凌", "人际边界", "师生关系", "网络交友"],
+    "恋爱与情感": ["择偶标准", "亲密关系", "恋爱困扰", "分手失恋", "情感表达", "恋爱观念", "暗恋/单恋"],
+    "职业与规划": ["就业焦虑", "职业发展", "实习困扰", "职场人际", "工作压力", "职业规划"],
+    "家庭与亲子": ["亲子沟通", "家庭压力", "家庭关系", "家庭暴力"],
+    "情绪与行为": ["行为习惯", "焦虑情绪", "抑郁与低落", "孤独感", "愤怒与烦躁", "自伤与自杀念头", "网络/手机依赖", "创伤应激"],
+    "自我认知": ["自我价值感", "外貌焦虑", "生命意义探索", "性格困扰", "自信心"]
+}
+OCCUPATIONS_LIST = ["小学生", "初中生", "高中生", "大学生", "老师", "家长", "职场人士"]
+"""
 
 def load_yaml_file(file_path: Path, required_keys: list):
     if not file_path.exists():
@@ -115,8 +138,11 @@ def load_text_file(file_path: Path):
 
 try:
     CORE_DRIVES = load_yaml_file(Path("core_drives.yaml"), ["name", "description"])
+    # CORE_DRIVES = load_yaml_file(Path("high_core_drives.yaml"), ["name", "description"])
     REACTION_PATTERNS = load_yaml_file(Path("reaction_patterns.yaml"), ["name", "description"])
+    # REACTION_PATTERNS = load_yaml_file(Path("high_reaction_patterns.yaml"), ["name", "description"])
     SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("system_prompt.txt"))
+    # SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("high_system_prompt.txt"))
 except (FileNotFoundError, ValueError) as e:
     print(f"Fatal error loading configuration files: {e}. Exiting.")
     sys.exit(1)
@@ -263,7 +289,15 @@ def process_generation_task(task):
 
         if profile_json and isinstance(profile_json, dict):
             profile_json['persona_id'] = str(uuid.uuid4())
-            return profile_json
+            
+            # --- 新增字段过滤功能 ---
+            filtered_profile = {key: profile_json[key] for key in DESIRED_FIELDS if key in profile_json}
+            # 检查是否有未包含在 DESIRED_FIELDS 中的原始 profile_json 字段 (可选的警告)
+            # unexpected_fields = [key for key in profile_json if key not in DESIRED_FIELDS]
+            # if unexpected_fields:
+            #     print(f"  Warning: Profile for {task.get('core_drive', {}).get('name', 'UnknownDrive')} generated unexpected fields: {unexpected_fields}. These were removed.")
+            return filtered_profile
+            # --- 结束新增 ---
         else:
             print(f"  Warning: LLM call failed or returned invalid/non-dict data for a task (type: {type(profile_json)}). Skipping.")
             return None
@@ -358,7 +392,7 @@ if __name__ == "__main__":
         sys.exit(1)
         
     # --- 配置 ---
-    TOTAL_PROFILES_TO_GENERATE = 500 # 要生成的总画像数
+    TOTAL_PROFILES_TO_GENERATE = 20 # 要生成的总画像数
     
     # 策略性增强配置 (可选，可为空列表 [])
     STRATEGIC_CONFIGS = [
@@ -370,7 +404,7 @@ if __name__ == "__main__":
     ]
     # --- 结束配置 ---
 
-    print(f"--- Running Archetype Generator V3 (Simplified) ---")
+    print(f"--- Running Archetype Generator ---")
     print(f"Mode: Strategic Combinatorial, Target Profiles: {TOTAL_PROFILES_TO_GENERATE}")
 
     generated_profiles = generate_profiles(
