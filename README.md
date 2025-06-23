@@ -31,7 +31,7 @@ Simulator/
 ├── system_prompt.txt               # LLM 系统指令模板
 ├── tools/
 │   └── calculate_valid_combinations.py # 用于计算有效的角色元素组合
-├── .env.example                    # (建议添加) 环境变量配置示例
+├── .env.example                    # 环境变量配置示例
 ├── .gitignore                      # Git忽略配置
 └── README.md                       # 本文件
 ```
@@ -46,7 +46,7 @@ Simulator/
         ```bash
         pip install PyYAML python-dotenv tqdm openai google-generativeai
         ```
-    *   复制 `.env.example` (如果尚不存在，请创建一个) 为 `.env` 文件。
+    *   复制 `.env.example` 为 `.env` 文件。
     *   在 `.env` 文件中配置您的 LLM API 密钥及其他相关参数 (如 `LLM_PROVIDER`, `OPENAI_API_KEY`, `GEMINI_API_KEY` 等)。
 
 2.  **配置文件检查**:
