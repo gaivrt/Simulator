@@ -41,43 +41,50 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import product
 import traceback # Ensure traceback is imported
 
-# --- LLM Specific Imports ---
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    print("Warning: openai library not found. OpenAI provider will not work.")
+# --- LLM Utils Import ---
+from tools.llm_utils import call_llm_api, check_llm_connectivity, LLM_PROVIDER
+# ------------------------
 
-try:
-     import google.generativeai as genai
-     GEMINI_AVAILABLE = True
-except ImportError:
-     GEMINI_AVAILABLE = False
-     print("Warning: google-generativeai library not found. Gemini provider will not work.")
+# --- LLM Specific Imports ---
+# try:
+#     from openai import OpenAI
+#     OPENAI_AVAILABLE = True
+# except ImportError:
+#     OPENAI_AVAILABLE = False
+#     print("Warning: openai library not found. OpenAI provider will not work.")
+
+# try:
+#      import google.generativeai as genai
+#      GEMINI_AVAILABLE = True
+# except ImportError:
+#      GEMINI_AVAILABLE = False
+#      print("Warning: google-generativeai library not found. Gemini provider will not work.")
 # ---------------------------
 
 load_dotenv()
 
 # --- LLM Config ---
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
-OPENAI_DEFAULT_MODEL = os.getenv("OPENAI_DEFAULT_MODEL", "gpt-4-turbo")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL_NAME = os.getenv("GEMINI_ARCHETYPE_MODEL", "gemini-1.5-flash")
-LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 1.2))
-LLM_TOP_P = float(os.getenv("LLM_TOP_P", 0.95))
-OPENAI_FREQUENCY_PENALTY = float(os.getenv("OPENAI_FREQUENCY_PENALTY", 0.3))
-OPENAI_PRESENCE_PENALTY = float(os.getenv("OPENAI_PRESENCE_PENALTY", 0.3))
+# LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai") # Moved to llm_utils
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Moved to llm_utils
+# OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") # Moved to llm_utils
+# OPENAI_DEFAULT_MODEL = os.getenv("OPENAI_DEFAULT_MODEL", "gpt-4-turbo") # Moved to llm_utils
+# GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Moved to llm_utils
+# GEMINI_MODEL_NAME = os.getenv("GEMINI_ARCHETYPE_MODEL", "gemini-1.5-flash") # Moved to llm_utils
+# LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 1.2)) # Moved to llm_utils
+# LLM_TOP_P = float(os.getenv("LLM_TOP_P", 0.95)) # Moved to llm_utils
+# OPENAI_FREQUENCY_PENALTY = float(os.getenv("OPENAI_FREQUENCY_PENALTY", 0.3)) # Moved to llm_utils
+# OPENAI_PRESENCE_PENALTY = float(os.getenv("OPENAI_PRESENCE_PENALTY", 0.3)) # Moved to llm_utils
 # ---------------------------------
+
+# --- Archetype Mode ---
+ARCHETYPE_MODE = os.getenv("ARCHETYPE_MODE", "k12") # k12 or high
 
 # --- 预设的理想字段 ---
 DESIRED_FIELDS = [
     "Gender", "Age", "Occupation", "Topic", "Subtopic", "Situation",
     "Event Time", "Event Location", "Event Participants", "Event Description",
     "Emotional Experience Words", "Coped Strategies and Effects", "Goals and Expectations",
-    "persona_id"  # persona_id 是在脚本中生成的，也应保留
+    "persona_id"  
 ]
 # --------------------
 
@@ -98,19 +105,20 @@ TOPIC_SUBTOPIC_MAP = {
     "家长视角与求助": ["孩子社交问题", "孩子情绪行为异常", "孩子学业求助", "亲子沟通方法", "如何引导与帮助孩子", "担忧孩子网络使用"]
 }
 OCCUPATIONS_LIST = ["小学生", "初中生", "高中生", "老师", "家长"]
-"""
 # 高校
-TOPIC_SUBTOPIC_MAP = {
+HIGH_TOPIC_SUBTOPIC_MAP = {
     "学业与成长": ["学业压力", "考试焦虑", "成绩困扰", "学习方法", "学习习惯", "厌学情绪", "升学规划", "作业问题", "时间管理"],
     "人际与社交": ["同学关系", "交友困惑", "校园霸凌", "人际边界", "师生关系", "网络交友"],
     "恋爱与情感": ["择偶标准", "亲密关系", "恋爱困扰", "分手失恋", "情感表达", "恋爱观念", "暗恋/单恋"],
     "职业与规划": ["就业焦虑", "职业发展", "实习困扰", "职场人际", "工作压力", "职业规划"],
-    "家庭与亲子": ["亲子沟通", "家庭压力", "家庭关系", "家庭暴力"],
-    "情绪与行为": ["行为习惯", "焦虑情绪", "抑郁与低落", "孤独感", "愤怒与烦躁", "自伤与自杀念头", "网络/手机依赖", "创伤应激"],
-    "自我认知": ["自我价值感", "外貌焦虑", "生命意义探索", "性格困扰", "自信心"]
+    "家庭与亲子": ["亲子沟通", "家庭压力", "家庭矛盾", "家庭暴力"],
+    "情绪与内在状态": ["行为习惯", "焦虑烦躁与失控", "抑郁低落与绝望", "孤独感与无价值感", "自伤与自杀念头", "冲动与愤怒管理", "网络/手机成瘾", "创伤事件复述与应激"],
+    "自我认知与价值观": ["自信心与自我价值", "外貌焦虑", "性格困扰", "生命意义与道德思辨"]
 }
-OCCUPATIONS_LIST = ["小学生", "初中生", "高中生", "大学生", "老师", "家长", "职场人士"]
-"""
+
+HIGH_OCCUPATIONS_LIST = ["小学生", "初中生", "高中生", "大学生", "老师", "家长", "职场人士"]
+
+ALLOWED_EMOTIONS = ["恐惧", "焦虑", "迷茫", "无助", "逃避", "心虚", "压抑", "羞愧", "烦躁", "内疚", "麻木", "沮丧"]
 
 def load_yaml_file(file_path: Path, required_keys: list):
     if not file_path.exists():
@@ -137,12 +145,21 @@ def load_text_file(file_path: Path):
         return f.read()
 
 try:
-    CORE_DRIVES = load_yaml_file(Path("core_drives.yaml"), ["name", "description"])
-    # CORE_DRIVES = load_yaml_file(Path("high_core_drives.yaml"), ["name", "description"])
-    REACTION_PATTERNS = load_yaml_file(Path("reaction_patterns.yaml"), ["name", "description"])
-    # REACTION_PATTERNS = load_yaml_file(Path("high_reaction_patterns.yaml"), ["name", "description"])
-    SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("system_prompt.txt"))
-    # SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("high_system_prompt.txt"))
+    if ARCHETYPE_MODE == "k12":
+        CORE_DRIVES = load_yaml_file(Path("core_drives.yaml"), ["name", "description"])
+    elif ARCHETYPE_MODE == "high":
+        CORE_DRIVES = load_yaml_file(Path("high_core_drives.yaml"), ["name", "description"])
+
+    if ARCHETYPE_MODE == "k12":
+        REACTION_PATTERNS = load_yaml_file(Path("reaction_patterns.yaml"), ["name", "description"])
+    elif ARCHETYPE_MODE == "high":
+        REACTION_PATTERNS = load_yaml_file(Path("high_reaction_patterns.yaml"), ["name", "description"])
+
+    if ARCHETYPE_MODE == "k12":
+        SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("system_prompt.txt"))
+    elif ARCHETYPE_MODE == "high":
+        SYSTEM_PROMPT_TEMPLATE = load_text_file(Path("high_system_prompt.txt"))
+
 except (FileNotFoundError, ValueError) as e:
     print(f"Fatal error loading configuration files: {e}. Exiting.")
     sys.exit(1)
@@ -159,105 +176,105 @@ def is_combination_valid(occupation: str, topic: str, config_item: dict) -> bool
     return True
 
 # --- LLM Client & Helper ---
-openai_client = None
-if LLM_PROVIDER == "openai":
-     if OPENAI_AVAILABLE and OPENAI_API_KEY:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL if OPENAI_BASE_URL else None)
-     else:
-         print("Error: OpenAI selected but library or API Key/Base URL missing.")
-elif LLM_PROVIDER == "gemini":
-     if GEMINI_AVAILABLE and GEMINI_API_KEY:
-         genai.configure(api_key=GEMINI_API_KEY)
-     else:
-          print("Error: Gemini selected but library or API Key missing.")
-else:
-    print(f"Warning: Unsupported LLM_PROVIDER: {LLM_PROVIDER}. LLM calls will fail.")
+# openai_client = None # Moved to llm_utils
+# if LLM_PROVIDER == "openai": # Moved to llm_utils
+#      if OPENAI_AVAILABLE and OPENAI_API_KEY:
+#         openai_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL if OPENAI_BASE_URL else None)
+#      else:
+#          print("Error: OpenAI selected but library or API Key/Base URL missing.")
+# elif LLM_PROVIDER == "gemini": # Moved to llm_utils
+#      if GEMINI_AVAILABLE and GEMINI_API_KEY:
+#          genai.configure(api_key=GEMINI_API_KEY)
+#      else:
+#           print("Error: Gemini selected but library or API Key missing.")
+# else:
+#     print(f"Warning: Unsupported LLM_PROVIDER: {LLM_PROVIDER}. LLM calls will fail.")
 
-def check_llm_connectivity():
-    print("\n--- Checking LLM Connectivity ---")
-    if LLM_PROVIDER == "openai":
-        if openai_client:
-            try:
-                openai_client.models.list()
-                print("OpenAI connection successful.")
-                return True
-            except Exception as e:
-                print(f"Error: OpenAI connection failed. Details: {e}")
-                return False
-        else: return False
-    elif LLM_PROVIDER == "gemini":
-        if GEMINI_AVAILABLE and GEMINI_API_KEY and GEMINI_MODEL_NAME:
-            try:
-                model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-                model.count_tokens("test connectivity")
-                print("Gemini connection successful.")
-                return True
-            except Exception as e:
-                print(f"Error: Gemini connection failed. Details: {e}")
-                return False
-        else: return False
-    return False
+# def check_llm_connectivity(): # Moved to llm_utils
+#     print("\n--- Checking LLM Connectivity ---")
+#     if LLM_PROVIDER == "openai":
+#         if openai_client:
+#             try:
+#                 openai_client.models.list()
+#                 print("OpenAI connection successful.")
+#                 return True
+#             except Exception as e:
+#                 print(f"Error: OpenAI connection failed. Details: {e}")
+#                 return False
+#         else: return False
+#     elif LLM_PROVIDER == "gemini":
+#         if GEMINI_AVAILABLE and GEMINI_API_KEY and GEMINI_MODEL_NAME:
+#             try:
+#                 model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+#                 model.count_tokens("test connectivity")
+#                 print("Gemini connection successful.")
+#                 return True
+#             except Exception as e:
+#                 print(f"Error: Gemini connection failed. Details: {e}")
+#                 return False
+#         else: return False
+#     return False
 
-def call_llm_api(system_prompt_formatted, model_override=None):
-    """
-    调用LLM API并处理返回的JSON。
-    新增了对返回结果的清洗，以处理潜在的Markdown格式。
-    """
-    def _clean_json_string(s: str) -> str:
-        """
-        从可能包含Markdown代码块的字符串中提取纯净的JSON部分。
-        """
-        # 使用正则表达式查找被 ```json ... ``` 包裹的内容
-        match = re.search(r"```json\s*([\s\S]*?)\s*```", s)
-        if match:
-            # 如果找到，返回第一个捕获组的内容，并去除首尾空白
-            return match.group(1).strip()
-        
-        # 如果没有找到Markdown块，尝试直接去除首尾的空白和换行符
-        # 这可以处理一些简单的不规范格式，比如开头或结尾有换行
-        return s.strip()
+# def call_llm_api(system_prompt_formatted, model_override=None): # Moved to llm_utils
+#     """
+#     调用LLM API并处理返回的JSON。
+#     新增了对返回结果的清洗，以处理潜在的Markdown格式。
+#     """
+#     def _clean_json_string(s: str) -> str:
+#         """
+#         从可能包含Markdown代码块的字符串中提取纯净的JSON部分。
+#         """
+#         # 使用正则表达式查找被 ```json ... ``` 包裹的内容
+#         match = re.search(r"```json\s*([\s\S]*?)\s*```", s)
+#         if match:
+#             # 如果找到，返回第一个捕获组的内容，并去除首尾空白
+#             return match.group(1).strip()
+#         
+#         # 如果没有找到Markdown块，尝试直接去除首尾的空白和换行符
+#         # 这可以处理一些简单的不规范格式，比如开头或结尾有纯粹的换行
+#         return s.strip()
 
-    raw_output = "N/A"
-    try:
-        if LLM_PROVIDER == "openai" and openai_client:
-            model = model_override or OPENAI_DEFAULT_MODEL
-            completion = openai_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": system_prompt_formatted}],
-                response_format={"type": "json_object"},
-                temperature=LLM_TEMPERATURE, top_p=LLM_TOP_P,
-                frequency_penalty=OPENAI_FREQUENCY_PENALTY,
-                presence_penalty=OPENAI_PRESENCE_PENALTY
-            )
-            raw_output = completion.choices[0].message.content
-            # OpenAI在指定json_object时通常返回纯净JSON，但清洗一下更安全
-            cleaned_output = _clean_json_string(raw_output)
-            return json.loads(cleaned_output)
+#     raw_output = "N/A"
+#     try:
+#         if LLM_PROVIDER == "openai" and openai_client:
+#             model = model_override or OPENAI_DEFAULT_MODEL
+#             completion = openai_client.chat.completions.create(
+#                 model=model,
+#                 messages=[{"role": "system", "content": system_prompt_formatted}],
+#                 response_format={"type": "json_object"},
+#                 temperature=LLM_TEMPERATURE, top_p=LLM_TOP_P,
+#                 frequency_penalty=OPENAI_FREQUENCY_PENALTY,
+#                 presence_penalty=OPENAI_PRESENCE_PENALTY
+#             )
+#             raw_output = completion.choices[0].message.content
+#             # OpenAI在指定json_object时通常返回纯净JSON，但清洗一下更安全
+#             cleaned_output = _clean_json_string(raw_output)
+#             return json.loads(cleaned_output)
 
-        elif LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
-            model = genai.GenerativeModel(model_override or GEMINI_MODEL_NAME)
-            response = model.generate_content(
-                system_prompt_formatted,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=LLM_TEMPERATURE, top_p=LLM_TOP_P,
-                    response_mime_type="application/json",
-                )
-            )
-            if response.candidates and response.candidates[0].content.parts:
-                raw_output = response.candidates[0].content.parts[0].text
-                # **关键修复：在解析前清洗Gemini的输出**
-                cleaned_output = _clean_json_string(raw_output)
-                return json.loads(cleaned_output)
-            return None
-        return None
-    except json.JSONDecodeError as e:
-        # 提供更详细的错误日志
-        print(f"LLM API Error: Failed to decode JSON. Error: {e}")
-        print(f"----- LLM Raw Output Start -----\n{raw_output}\n----- LLM Raw Output End -----")
-        return None
-    except Exception as e:
-        print(f"LLM API Error: {e}")
-        return None
+#         elif LLM_PROVIDER == "gemini" and GEMINI_AVAILABLE:
+#             model = genai.GenerativeModel(model_override or GEMINI_MODEL_NAME)
+#             response = model.generate_content(
+#                 system_prompt_formatted,
+#                 generation_config=genai.types.GenerationConfig(
+#                     temperature=LLM_TEMPERATURE, top_p=LLM_TOP_P,
+#                     response_mime_type="application/json",
+#                 )
+#             )
+#             if response.candidates and response.candidates[0].content.parts:
+#                 raw_output = response.candidates[0].content.parts[0].text
+#                 # **关键修复：在解析前清洗Gemini的输出**
+#                 cleaned_output = _clean_json_string(raw_output)
+#                 return json.loads(cleaned_output)
+#             return None
+#         return None
+#     except json.JSONDecodeError as e:
+#         # 提供更详细的错误日志
+#         print(f"LLM API Error: Failed to decode JSON. Error: {e}")
+#         print(f"----- LLM Raw Output Start -----\n{raw_output}\n----- LLM Raw Output End -----")
+#         return None
+#     except Exception as e:
+#         print(f"LLM API Error: {e}")
+#         return None
 
 # --- 核心生成逻辑 ---
 def process_generation_task(task):
@@ -266,6 +283,10 @@ def process_generation_task(task):
         # DEBUG: Print task details
         # print(f"DEBUG: Starting process_generation_task with task: {task}")
         
+        # --- 使用用户定义的全部情绪并格式化为字符串 ---
+        allowed_emotions_str = ", ".join(ALLOWED_EMOTIONS) # 使用全局定义的 ALLOWED_EMOTIONS
+        # --- 结束 ---
+
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             target_core_drive_name=task["core_drive"]["name"],
             target_core_drive_description=task["core_drive"]["description"],
@@ -273,7 +294,8 @@ def process_generation_task(task):
             target_subtopic=task["subtopic"],
             target_reaction_pattern_name=task["reaction_pattern"]["name"],
             target_reaction_pattern_description=task["reaction_pattern"]["description"],
-            target_occupation=task["occupation"]
+            target_occupation=task["occupation"],
+            allowed_emotions=allowed_emotions_str # 传递格式化后的字符串
         )
         
         # DEBUG: Print formatted prompt
@@ -290,12 +312,43 @@ def process_generation_task(task):
         if profile_json and isinstance(profile_json, dict):
             profile_json['persona_id'] = str(uuid.uuid4())
             
+            # --- START OF RE-ADDED AGE PROCESSING CODE ---
+            if 'Age' in profile_json:
+                age_value = profile_json['Age']
+                if isinstance(age_value, str):
+                    try:
+                        profile_json['Age'] = int(age_value)
+                    except ValueError:
+                        print(f"  Warning: Could not convert Age string '{age_value}' to int for persona_id {profile_json.get('persona_id', 'N/A')}. Setting Age to None.")
+                        profile_json['Age'] = None
+                elif not isinstance(age_value, int) and age_value is not None: # Check if not int AND not None
+                    original_age_type = type(age_value).__name__
+                    print(f"  Warning: Age field for persona_id {profile_json.get('persona_id', 'N/A')} was of unexpected type ({original_age_type}) with value '{age_value}'. Setting Age to None.")
+                    profile_json['Age'] = None
+                # If Age is already an int or None, do nothing.
+            # else:
+                # Optional: Log if 'Age' field is entirely missing from LLM output if it's expected.
+                # print(f"  Info: 'Age' field missing in raw LLM output for persona_id {profile_json.get('persona_id', 'N/A')}.")
+            # --- END OF RE-ADDED AGE PROCESSING CODE ---
+            
+            # --- START OF RE-ADDED UNEXPECTED FIELDS IDENTIFICATION ---
+            # Identify unexpected fields *after* Age processing but *before* DESIRED_FIELDS filtering
+            all_keys_after_age_processing = set(profile_json.keys())
+            desired_keys_set = set(DESIRED_FIELDS)
+            unexpected_keys_generated_by_llm = list(all_keys_after_age_processing - desired_keys_set)
+            # --- END OF RE-ADDED UNEXPECTED FIELDS IDENTIFICATION ---
+
             # --- 新增字段过滤功能 ---
             filtered_profile = {key: profile_json[key] for key in DESIRED_FIELDS if key in profile_json}
             # 检查是否有未包含在 DESIRED_FIELDS 中的原始 profile_json 字段 (可选的警告)
-            # unexpected_fields = [key for key in profile_json if key not in DESIRED_FIELDS]
-            # if unexpected_fields:
-            #     print(f"  Warning: Profile for {task.get('core_drive', {}).get('name', 'UnknownDrive')} generated unexpected fields: {unexpected_fields}. These were removed.")
+            
+            # --- START OF RE-ADDED UNEXPECTED FIELDS WARNING (adjusted placement) ---
+            # Warn about unexpected fields that were removed by the DESIRED_FIELDS filter
+            if unexpected_keys_generated_by_llm:
+                 task_identifier_for_log = f"persona_id {profile_json.get('persona_id', 'N/A')}" # Use the already generated ID
+                 print(f"  Info: For {task_identifier_for_log}, the LLM generated unexpected fields which were subsequently removed by the DESIRED_FIELDS filter: {unexpected_keys_generated_by_llm}")
+            # --- END OF RE-ADDED UNEXPECTED FIELDS WARNING ---
+            
             return filtered_profile
             # --- 结束新增 ---
         else:
@@ -320,8 +373,14 @@ def generate_profiles(num_profiles: int, strategic_configs: list = []):
             if count <= 0: continue
             
             possible_drives = [cd for cd in CORE_DRIVES if not config.get("core_drive") or cd['name'] == config.get("core_drive")]
-            possible_occupations = [occ for occ in OCCUPATIONS_LIST if not config.get("occupation") or occ == config.get("occupation")]
-            possible_topics = [t for t in TOPIC_SUBTOPIC_MAP.keys() if not config.get("topic") or t == config.get("topic")]
+            if ARCHETYPE_MODE == "high":
+                possible_occupations = [occ for occ in HIGH_OCCUPATIONS_LIST if not config.get("occupation") or occ == config.get("occupation")]
+            else:
+                possible_occupations = [occ for occ in OCCUPATIONS_LIST if not config.get("occupation") or occ == config.get("occupation")]
+            if ARCHETYPE_MODE == "high":
+                possible_topics = [t for t in HIGH_TOPIC_SUBTOPIC_MAP.keys() if not config.get("topic") or t == config.get("topic")]
+            else:
+                possible_topics = [t for t in TOPIC_SUBTOPIC_MAP.keys() if not config.get("topic") or t == config.get("topic")]
             possible_rps = [rp for rp in REACTION_PATTERNS if not config.get("reaction_pattern") or rp['name'] == config.get("reaction_pattern")]
             
             if not all([possible_drives, possible_occupations, possible_topics, possible_rps]):
@@ -334,7 +393,10 @@ def generate_profiles(num_profiles: int, strategic_configs: list = []):
                 drive = random.choice(possible_drives)
                 occupation = random.choice(possible_occupations)
                 topic = random.choice(possible_topics)
-                subtopic = random.choice(TOPIC_SUBTOPIC_MAP[topic])
+                if ARCHETYPE_MODE == "high":
+                    subtopic = random.choice(HIGH_TOPIC_SUBTOPIC_MAP[topic])
+                else:
+                    subtopic = random.choice(TOPIC_SUBTOPIC_MAP[topic])
                 rp = random.choice(possible_rps)
 
                 if is_combination_valid(occupation, topic, drive) and is_combination_valid(occupation, topic, rp):
@@ -349,7 +411,10 @@ def generate_profiles(num_profiles: int, strategic_configs: list = []):
     # 2. 构建组合模式的生成计划 (为剩余数量)
     if remaining_profiles > 0:
         print(f"\n--- Building Plan for remaining {remaining_profiles} Profiles (Combinatorial Mode) ---")
-        all_possible_combos = list(product(OCCUPATIONS_LIST, TOPIC_SUBTOPIC_MAP.items(), CORE_DRIVES, REACTION_PATTERNS))
+        if ARCHETYPE_MODE == "high":
+            all_possible_combos = list(product(HIGH_OCCUPATIONS_LIST, HIGH_TOPIC_SUBTOPIC_MAP.items(), CORE_DRIVES, REACTION_PATTERNS))
+        else:
+            all_possible_combos = list(product(OCCUPATIONS_LIST, TOPIC_SUBTOPIC_MAP.items(), CORE_DRIVES, REACTION_PATTERNS))
         valid_combos = []
         for occ, (top, subs), drive, rp in all_possible_combos:
             if is_combination_valid(occ, top, drive) and is_combination_valid(occ, top, rp):
@@ -392,16 +457,23 @@ if __name__ == "__main__":
         sys.exit(1)
         
     # --- 配置 ---
-    TOTAL_PROFILES_TO_GENERATE = 20 # 要生成的总画像数
+    TOTAL_PROFILES_TO_GENERATE = 200 # 要生成的总画像数
     
     # 策略性增强配置 (可选，可为空列表 [])
+    STRATEGIC_CONFIGS = []
+    """
     STRATEGIC_CONFIGS = [
         {
             "reaction_pattern": "绝望求死与危机边缘型",
             "count": 1 # 强制生成1个危机边缘型画像
         },
+        {
+            "reaction_pattern": "家长视角与求助",
+            "count": 2 # 强制生成2个家长视角与求助画像
+        }
         # 您可以在此处添加更多策略性配置
     ]
+    """
     # --- 结束配置 ---
 
     print(f"--- Running Archetype Generator ---")
@@ -414,7 +486,7 @@ if __name__ == "__main__":
 
     # --- 保存结果 ---
     if generated_profiles:
-        output_filename = "generated_character_profiles_v3.json"
+        output_filename = f"generated_character_profiles_{ARCHETYPE_MODE}.json"
         try:
             with open(output_filename, 'w', encoding='utf-8') as f:
                 json.dump(generated_profiles, f, ensure_ascii=False, indent=2)

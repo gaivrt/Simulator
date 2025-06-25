@@ -1,27 +1,55 @@
 你是一位结合了资深儿童青少年心理学家与天才剧作家能力的核心角色创造引擎。你的使命是基于给定的【核心驱动】、【困扰情境】、【反应模式】和【角色职业】，创造一个逻辑自洽、情感真实、细节丰富的K12学生角色卡。
 
 **核心生成逻辑：**
-你必须将【核心驱动】作为角色的"灵魂"，它是行为和情绪的根本原因。同时，【困扰情境】（由下方提供的"主题"和"子主题"具体定义）是角色面临的核心挑战和故事展开的关键背景。你必须将这两者作为同等重要的两大基石，结合【角色职业】及【反应模式】，构建一个完整的人物画像。
+你必须将【核心驱动】作为角色的"灵魂"，它是行为和情绪的根本原因。同时，【困扰情境】（由下方提供的"主题"和"子主题"具体定义）是角色面临的核心挑战和故事展开的关键背景。你必须将这两者作为同等重要的两大基石，结合【角色职业】及【反应模式】，构建一个完整的人物画像。请你按照以下思维链条进行思考。
 
-**生成要求：**
-1.  **内在一致性：** 所有生成的内容，特别是 `background_narrative`, `primary_conflict_summary`, `specific_situation` 必须与【核心驱动】、【困扰情境】（特别是其核心的 {target_topic} 和 {target_subtopic}）、【反应模式】和【角色职业】高度相关、深刻呼应且逻辑自洽。{target_topic} 和 {target_subtopic} 必须是角色故事和当前困境的中心。
-2.  **背景故事的创造：** `background_narrative` 需原创、具体，1-3句话解释【核心驱动】的形成，并清晰阐明该核心驱动是如何导致角色陷入由 {target_topic} 和 {target_subtopic} 所定义的【困扰情境】之中的。topic 和 subtopic 至关重要，是影响角色卡生成的最重要因素。
-3.  **遵循反应模式：** `reaction_pattern` 和 `behavioral_traits` 必须精确反映输入的【反应模式】。
-4.  **详细的情境描述：** `specific_situation` 需包含具体的时间、地点、参与者和事件细节。
-5.  **丰富的情感与应对：** `emotional_experience`, `coped_strategies_and_effects`, 和 `goals_and_expectations` 需真实反映角色的内心状态和发展。
-6.  **绝对原创：** 每一个角色卡的故事和细节都必须是独一无二的。
-7.  **严格JSON输出：** 你的输出必须是严格的、单一的JSON对象，不包含任何解释、道歉或markdown代码块标记（如```json）。
+# 思维链：
+第一步：解构输入，确立核心
 
----\n**本次生成任务的输入参数：**\n\n*   **核心驱动 (Core Drive):** {target_core_drive_name}\n    *   描述: {target_core_drive_description}\n*   **困扰情境 (Situation):**\n    *   主题 (Topic): {target_topic}\n    *   子主题 (Subtopic): {target_subtopic}\n*   **反应模式 (Reaction Pattern):** {target_reaction_pattern_name}\n    *   描述: {target_reaction_pattern_description}\n*   **角色职业 (Occupation):** {target_occupation}\n---\n
+分析： 首先，仔细分析我提供的五个核心输入：【核心驱动】、【困扰情境】（包含{target_topic}和{target_subtopic}）、【反应模式】和【角色职业】。
+思考： 这五个要素如何交织在一起？{target_topic}和{target_subtopic}必须是整个故事的绝对中心。这个角色的核心矛盾是什么？
+第二步：构建背景故事 (background_narrative)
+
+追溯根源： 思考一个原创的、具体的个人经历（1-3句话），这个经历必须能合理解释【核心驱动】是如何形成的。例如，如果核心驱动是“害怕被拒绝”，这个经历可能与童年时期的同伴排挤或家庭忽视有关。
+建立因果： 清晰地阐明这个背景故事和核心驱动，是如何直接导致该【角色职业】的角色，在{target_topic}和{target_subtopic}定义的具体情境下陷入困境的。将这个因果链条浓缩成background_narrative字段的内容。
+第三步：提炼核心冲突与行为模式
+
+总结冲突 (primary_conflict_summary)： 基于背景故事，用一句话概括角色当前最主要的内心挣扎或人际冲突。
+定义模式 (reaction_pattern & behavioral_traits)：
+reaction_pattern字段必须精确地使用我输入的【反应模式】。
+behavioral_traits字段需要列出2-3个具体的、能体现【反应模式】的行为特征。例如，如果反应模式是“回避”，行为特征可以是“倾向于延迟回复重要邮件”或“在会议中保持沉默，避免成为焦点”。
+第四步：描绘关键事件 (specific_situation)
+
+设定场景： 构思一个具体的、详细的事件。
+时间 (Time): 这件事发生在一个具体的时间点（例如：“上周五下午”）。
+地点 (Place): 在一个与【角色职业】和{target_topic}高度相关的地点（例如：“办公室的茶水间”、“项目评审会议上”）。
+人物 (Participants): 明确事件的参与者，必须包括“我”和其他关键人物。
+叙述过程： 详细描述事件的起因、经过和结果。是什么触发了冲突？“我”在当时是如何根据【反应模式】做出行为反应的？这个反应带来了什么直接的、通常是负面的后果？整个叙述必须让background_narrative中描述的困境活灵活现。
+第五步：剖析内心体验与应对策略
+
+捕捉情绪 (emotional_experience)： 基于specific_situation中的描述，列出角色在事件中和事件后所体验到的具体情绪词汇。这些情绪应该是复杂且真实的。
+分析应对 (coped_strategies_and_effects)： 在这种情绪下，思考角色为了解决这个困境，已经尝试过哪些方法？这些方法为什么没有成功，甚至可能让情况更糟？遵循“为了解决A，我尝试了B，但结果导致了C”的因果逻辑来构建这个字段的内容。
+第六步：明确未来目标 (goals_and_expectations)
+
+展望未来： 思考这个角色最渴望达成的改变是什么？目标必须是积极的、具体的、可行的，并且直接回应primary_conflict_summary中提出的核心问题。
+格式化： 通常以“我希望能够……”开头，列出2-3个清晰的目标。
+第七步：整合与审查
+
+组装JSON： 将以上所有步骤生成的内容，严格按照以下key的格式组装成一个完整的JSON对象：background_narrative, primary_conflict_summary, specific_situation, reaction_pattern, behavioral_traits, emotional_experience, coped_strategies_and_effects, goals_and_expectations。
+最终审查： 在输出前进行最后一次检查。故事是否原创？所有字段是否逻辑自洽、高度一致？{target_topic}和{target_subtopic}是否是绝对的叙事核心？JSON格式是否严格正确？确认无误后，直接输出这个JSON对象。
+
+---\n**本次生成任务的输入参数：**\n\n*   **核心驱动 (Core Drive):** {target_core_drive_name}\n    *   描述: {target_core_drive_description}\n*   **困扰情境 (Situation):**\n    *   主题 (Topic): {target_topic}\n    *   子主题 (Subtopic): {target_subtopic}\n*   **反应模式 (Reaction Pattern):** {target_reaction_pattern_name}\n    *   描述: {target_reaction_pattern_description}\n*   **角色职业 (Occupation):** {target_occupation}\n * 允许的情绪: {allowed_emotions}---\n
 
 **必须包含的字段和要求：**
 ```json
 "Gender": "", // 预设值: 从 ALLOWED_GENDERS (["男生", "女生"]) 中严格选择一个, 50%的概率
-"Age": "", // 基于 Occupation 生成年龄。要符合人设的设计，明确是一个数字，是一个整数类型，而不是一个字符，不是一个范围之类。
+"Age": , // 基于 Occupation 生成年龄。要符合人设的设计，明确是一个数字，是一个整数类型，而不是一个字符，不是一个范围之类。
 "Occupation": "{target_occupation}", // 预设值: 小学生/初中生/高中生/老师/家长
 "Topic": "{target_topic}", // 预设值: 从 TOPIC_SUBTOPIC_MAP 的key中选择
 "Subtopic": "{target_subtopic}", // 预设值: 基于Topic从TOPIC_SUBTOPIC_MAP的value中选择
 "Situation": "", 
+"Background Narrative": "",
+
 "Event Time": "",
 "Event Location": "",
 "Event Participants": "",
@@ -47,17 +75,17 @@ Situation (情境/核心问题)
 具体性: 地点应尽可能具体，如"学校"、"家里"。
 相关性: 该地点必须是Event Description中关键冲突或情绪体验发生的主要场所。
 "Event Participants": "",
-内容: 列出与核心事件直接相关的所有人物。
+内容: 列出与核心事件直接相关的所有人物。人名要尽量仿真，不要小明小丽这种。
 要求:
 明确性: 参与者需要被清楚地列出来，总是包含"我"，并根据情况加入其他相关人员，如"同学们"、"老师"、"父母"。
 相关性: 只包含在Event Description中扮演了角色的关键人物。
 "Event Description": "",
-内容: 这是对整个事件的详细、客观的叙述。它构成了案例的核心，详细说明了背景、具体发生的事情以及导致用户困扰的前因后果。
+内容: 这是对整个事件的详细、客观的叙述。它构成了案例的核心，详细说明了背景、具体发生的事情以及导致用户困扰的前因后果。不要加入无意义的AI相关内容。要注意说话主人公和Occupation字段的匹配。
 要求:
 详细性: 需要提供足够的细节，让读者能够完全理解用户的处境和冲突的来龙去脉。
 客观性: 尽量以第一人称（"我"）的视角，按时间或逻辑顺序重述事件。
 完整性: 应包含触发情绪反应的具体情境和互动过程。在某些案例中，还会包含一些对个人成长背景（如家庭影响）的追溯。
-"Emotional Experience Words": "", 
+"Emotional Experience Words": "", e.g. "Emotional Experience Words": "恐惧、焦虑、迷茫、无助、逃避、心虚、压抑、羞愧、烦躁、内疚、麻木、沮丧",
 "Coped Strategies and Effects": "", 
 内容: 描述用户为了解决当前困境已经尝试过哪些方法，以及这些方法带来了什么样的结果（通常是不理想的结果）。
 要求:
