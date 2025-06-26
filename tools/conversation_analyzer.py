@@ -13,7 +13,17 @@ if PROJECT_ROOT not in sys.path:
 
 # --- LLM Utils Import ---
 from tools.llm_utils import call_llm_api, check_llm_connectivity
-# ------------------------
+# --- Import for keyword processing ---
+LLM_DATA_PREPROCESSOR_AVAILABLE = False
+complete_preprocessing_pipeline_for_analyzer = None
+try:
+    from tools.conversation_data_preprocessor import complete_preprocessing_pipeline
+    complete_preprocessing_pipeline_for_analyzer = complete_preprocessing_pipeline
+    LLM_DATA_PREPROCESSOR_AVAILABLE = True
+    print("Successfully imported complete_preprocessing_pipeline from conversation_data_preprocessor for analyzer.")
+except ImportError as e:
+    print(f"Warning: Failed to import complete_preprocessing_pipeline from tools.conversation_data_preprocessor. Keyword processing for analyzer outputs will be skipped. Error: {e}")
+# -----------------------------------
 
 # --- Configuration for Parallel Processing ---
 MAX_CONCURRENT_ANALYSIS_WORKERS = 50  # Adjust as needed, consider API rate limits
@@ -23,7 +33,7 @@ CORE_DRIVE_TEXT_FIELD = "core_drive_text_for_clustering"
 REACTION_PATTERN_TEXT_FIELD = "reaction_pattern_text_for_clustering"
 
 # --- Configuration ---
-INPUT_DATA_PATH = "DifyLog_0613-中小学_plus_preprocessed.json" # Will be managed by the main pipeline
+INPUT_DATA_PATH = "DifyLog_0613-中小学_plus_preprocessed_llmfiltered_v3.json" # Will be managed by the main pipeline
 OUTPUT_DATA_PATH = "DifyLog_0613-中小学_plus_analyzed.json" # Will be managed by the main pipeline
 
 # --- Prompt Templates ---
@@ -215,102 +225,118 @@ def _analyze_single_conversation(conv_data_tuple):
     i, conv_data = conv_data_tuple # Unpack index and data
     conv_id = conv_data.get('conversation_id', f'N/A_idx_{i}')
     messages = conv_data.get("messages", [])
-    conversation_log_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+    conversation_log_str = "\n".join([
+        f"{msg.get('role', 'unknown')}: {msg.get('content_processed', msg.get('content', ''))}" 
+        for msg in messages if msg.get('content_processed', msg.get('content', '')).strip()
+    ]) # Use processed content if available, and ensure role is present
 
-    # Default texts before analysis, including conv_id for easier tracking
     extracted_reaction_pattern_text = f"Reaction pattern analysis inconclusive for {conv_id}"
     extracted_core_drive_text = f"Core drive analysis inconclusive for {conv_id}"
 
-    if not messages:
-        extracted_reaction_pattern_text = "Analysis skipped: No messages found"
-        extracted_core_drive_text = "Analysis skipped: No messages found"
-        return {
-            "conversation_id": conv_id,
-            "conversation_content": conversation_log_str, # Will be an empty string
-            REACTION_PATTERN_TEXT_FIELD: extracted_reaction_pattern_text,
-            CORE_DRIVE_TEXT_FIELD: extracted_core_drive_text
-        }
-
-    # --- Reaction Pattern Analysis ---
-    # Initialize for error logging clarity, in case LLM call itself fails or returns None early
-    reaction_pattern_yaml_str_for_error_logging = "LLM call not made or result was None"
-    cleaned_rp_yaml_str_for_error_logging = "Cleaning not attempted or input was empty/non-string"
-    try:
-        reaction_pattern_prompt = REACTION_PATTERN_PROMPT_TEMPLATE.format(conversation_log=conversation_log_str)
-        llm_rp_output = call_llm_api(reaction_pattern_prompt, expect_json=False)
-        
-        current_context_label = f"Reaction Pattern (for {conv_id})"
-
-        if llm_rp_output is None:
-            extracted_reaction_pattern_text = f"{current_context_label} Error: LLM API returned None."
-        elif isinstance(llm_rp_output, str):
-            reaction_pattern_yaml_str_for_error_logging = llm_rp_output # Store for logging
-            if not llm_rp_output.strip():
-                extracted_reaction_pattern_text = f"{current_context_label} Error: LLM returned an empty string."
-            else:
-                cleaned_rp_yaml_str = _strip_yaml_markdown_delimiters(llm_rp_output)
-                cleaned_rp_yaml_str_for_error_logging = cleaned_rp_yaml_str # Store for logging
-                if not cleaned_rp_yaml_str.strip():
-                    extracted_reaction_pattern_text = f"{current_context_label} Error: LLM output was empty after cleaning."
-                else:
-                    parsed_rp_obj = yaml.safe_load(cleaned_rp_yaml_str)
-                    extracted_reaction_pattern_text = _extract_main_text_from_parsed_yaml(parsed_rp_obj, current_context_label, cleaned_rp_yaml_str)
-        else: # llm_rp_output is not None and not a string (e.g. an error dict from call_llm_api)
-            reaction_pattern_yaml_str_for_error_logging = str(llm_rp_output) # Log its string representation
-            # For non-string LLM output, pass it directly to the extractor
-            extracted_reaction_pattern_text = _extract_main_text_from_parsed_yaml(llm_rp_output, f"{current_context_label}, direct LLM obj", str(llm_rp_output))
-
-    except yaml.YAMLError as e:
-        print(f"\n  YAML 解析错误 (对话 {conv_id}, Reaction Pattern): {e}")
-        print(f"  LLM Raw Output (Reaction Pattern, {conv_id}):\n{str(reaction_pattern_yaml_str_for_error_logging)[:500]}...")
-        print(f"  Cleaned YAML Attempt (Reaction Pattern, {conv_id}):\n{str(cleaned_rp_yaml_str_for_error_logging)[:500]}...")
-        extracted_reaction_pattern_text = f"Reaction Pattern Error (for {conv_id}): Invalid YAML - {str(e)[:100]}..."
-    except Exception as e_gen:
-        print(f"\n  处理 Reaction Pattern 时发生意外错误 (对话 {conv_id}): {e_gen}")
-        extracted_reaction_pattern_text = f"Reaction Pattern Error (for {conv_id}): Unexpected error during processing - {str(e_gen)[:100]}..."
-
-    # --- Core Drive Analysis ---
-    core_drive_yaml_str_for_error_logging = "LLM call not made or result was None"
-    cleaned_cd_yaml_str_for_error_logging = "Cleaning not attempted or input was empty/non-string"
-    try:
-        core_drive_prompt = CORE_DRIVE_PROMPT_TEMPLATE.format(conversation_log=conversation_log_str)
-        llm_cd_output = call_llm_api(core_drive_prompt, expect_json=False)
-        
-        current_context_label = f"Core Drive (for {conv_id})"
-
-        if llm_cd_output is None:
-            extracted_core_drive_text = f"{current_context_label} Error: LLM API returned None."
-        elif isinstance(llm_cd_output, str):
-            core_drive_yaml_str_for_error_logging = llm_cd_output
-            if not llm_cd_output.strip():
-                extracted_core_drive_text = f"{current_context_label} Error: LLM returned an empty string."
-            else:
-                cleaned_cd_yaml_str = _strip_yaml_markdown_delimiters(llm_cd_output)
-                cleaned_cd_yaml_str_for_error_logging = cleaned_cd_yaml_str
-                if not cleaned_cd_yaml_str.strip():
-                    extracted_core_drive_text = f"{current_context_label} Error: LLM output was empty after cleaning."
-                else:
-                    parsed_cd_obj = yaml.safe_load(cleaned_cd_yaml_str)
-                    extracted_core_drive_text = _extract_main_text_from_parsed_yaml(parsed_cd_obj, current_context_label, cleaned_cd_yaml_str)
-        else: # llm_cd_output is not None and not a string
-            core_drive_yaml_str_for_error_logging = str(llm_cd_output)
-            extracted_core_drive_text = _extract_main_text_from_parsed_yaml(llm_cd_output, f"{current_context_label}, direct LLM obj", str(llm_cd_output))
+    if not conversation_log_str.strip(): # Check if log string is empty after processing
+        extracted_reaction_pattern_text = "Analysis skipped: No meaningful message content found after processing"
+        extracted_core_drive_text = "Analysis skipped: No meaningful message content found after processing"
+    else:
+        # --- Reaction Pattern Analysis ---
+        # Initialize for error logging clarity, in case LLM call itself fails or returns None early
+        reaction_pattern_yaml_str_for_error_logging = "LLM call not made or result was None"
+        cleaned_rp_yaml_str_for_error_logging = "Cleaning not attempted or input was empty/non-string"
+        try:
+            reaction_pattern_prompt = REACTION_PATTERN_PROMPT_TEMPLATE.format(conversation_log=conversation_log_str)
+            llm_rp_output = call_llm_api(reaction_pattern_prompt, expect_json=False)
             
-    except yaml.YAMLError as e:
-        print(f"\n  YAML 解析错误 (对话 {conv_id}, Core Drive): {e}")
-        print(f"  LLM Raw Output (Core Drive, {conv_id}):\n{str(core_drive_yaml_str_for_error_logging)[:500]}...")
-        print(f"  Cleaned YAML Attempt (Core Drive, {conv_id}):\n{str(cleaned_cd_yaml_str_for_error_logging)[:500]}...")
-        extracted_core_drive_text = f"Core Drive Error (for {conv_id}): Invalid YAML - {str(e)[:100]}..."
-    except Exception as e_gen:
-        print(f"\n  处理 Core Drive 时发生意外错误 (对话 {conv_id}): {e_gen}")
-        extracted_core_drive_text = f"Core Drive Error (for {conv_id}): Unexpected error during processing - {str(e_gen)[:100]}..."
+            current_context_label = f"Reaction Pattern (for {conv_id})"
 
-    # Construct the new simplified dictionary with exactly four fields
+            if llm_rp_output is None:
+                extracted_reaction_pattern_text = f"{current_context_label} Error: LLM API returned None."
+            elif isinstance(llm_rp_output, str):
+                reaction_pattern_yaml_str_for_error_logging = llm_rp_output # Store for logging
+                if not llm_rp_output.strip():
+                    extracted_reaction_pattern_text = f"{current_context_label} Error: LLM returned an empty string."
+                else:
+                    cleaned_rp_yaml_str = _strip_yaml_markdown_delimiters(llm_rp_output)
+                    cleaned_rp_yaml_str_for_error_logging = cleaned_rp_yaml_str # Store for logging
+                    if not cleaned_rp_yaml_str.strip():
+                        extracted_reaction_pattern_text = f"{current_context_label} Error: LLM output was empty after cleaning."
+                    else:
+                        parsed_rp_obj = yaml.safe_load(cleaned_rp_yaml_str)
+                        extracted_reaction_pattern_text = _extract_main_text_from_parsed_yaml(parsed_rp_obj, current_context_label, cleaned_rp_yaml_str)
+            else: # llm_rp_output is not None and not a string (e.g. an error dict from call_llm_api)
+                reaction_pattern_yaml_str_for_error_logging = str(llm_rp_output) # Log its string representation
+                # For non-string LLM output, pass it directly to the extractor
+                extracted_reaction_pattern_text = _extract_main_text_from_parsed_yaml(llm_rp_output, f"{current_context_label}, direct LLM obj", str(llm_rp_output))
+
+        except yaml.YAMLError as e:
+            print(f"\n  YAML 解析错误 (对话 {conv_id}, Reaction Pattern): {e}")
+            print(f"  LLM Raw Output (Reaction Pattern, {conv_id}):\n{str(reaction_pattern_yaml_str_for_error_logging)[:500]}...")
+            print(f"  Cleaned YAML Attempt (Reaction Pattern, {conv_id}):\n{str(cleaned_rp_yaml_str_for_error_logging)[:500]}...")
+            extracted_reaction_pattern_text = f"Reaction Pattern Error (for {conv_id}): Invalid YAML - {str(e)[:100]}..."
+        except Exception as e_gen:
+            print(f"\n  处理 Reaction Pattern 时发生意外错误 (对话 {conv_id}): {e_gen}")
+            extracted_reaction_pattern_text = f"Reaction Pattern Error (for {conv_id}): Unexpected error during processing - {str(e_gen)[:100]}..."
+
+        # --- Core Drive Analysis ---
+        core_drive_yaml_str_for_error_logging = "LLM call not made or result was None"
+        cleaned_cd_yaml_str_for_error_logging = "Cleaning not attempted or input was empty/non-string"
+        try:
+            core_drive_prompt = CORE_DRIVE_PROMPT_TEMPLATE.format(conversation_log=conversation_log_str)
+            llm_cd_output = call_llm_api(core_drive_prompt, expect_json=False)
+            
+            current_context_label = f"Core Drive (for {conv_id})"
+
+            if llm_cd_output is None:
+                extracted_core_drive_text = f"{current_context_label} Error: LLM API returned None."
+            elif isinstance(llm_cd_output, str):
+                core_drive_yaml_str_for_error_logging = llm_cd_output
+                if not llm_cd_output.strip():
+                    extracted_core_drive_text = f"{current_context_label} Error: LLM returned an empty string."
+                else:
+                    cleaned_cd_yaml_str = _strip_yaml_markdown_delimiters(llm_cd_output)
+                    cleaned_cd_yaml_str_for_error_logging = cleaned_cd_yaml_str
+                    if not cleaned_cd_yaml_str.strip():
+                        extracted_core_drive_text = f"{current_context_label} Error: LLM output was empty after cleaning."
+                    else:
+                        parsed_cd_obj = yaml.safe_load(cleaned_cd_yaml_str)
+                        extracted_core_drive_text = _extract_main_text_from_parsed_yaml(parsed_cd_obj, current_context_label, cleaned_cd_yaml_str)
+            else: # llm_cd_output is not None and not a string
+                core_drive_yaml_str_for_error_logging = str(llm_cd_output)
+                extracted_core_drive_text = _extract_main_text_from_parsed_yaml(llm_cd_output, f"{current_context_label}, direct LLM obj", str(llm_cd_output))
+            
+        except yaml.YAMLError as e:
+            print(f"\n  YAML 解析错误 (对话 {conv_id}, Core Drive): {e}")
+            print(f"  LLM Raw Output (Core Drive, {conv_id}):\n{str(core_drive_yaml_str_for_error_logging)[:500]}...")
+            print(f"  Cleaned YAML Attempt (Core Drive, {conv_id}):\n{str(cleaned_cd_yaml_str_for_error_logging)[:500]}...")
+            extracted_core_drive_text = f"Core Drive Error (for {conv_id}): Invalid YAML - {str(e)[:100]}..."
+        except Exception as e_gen:
+            print(f"\n  处理 Core Drive 时发生意外错误 (对话 {conv_id}): {e_gen}")
+            extracted_core_drive_text = f"Core Drive Error (for {conv_id}): Unexpected error during processing - {str(e_gen)[:100]}..."
+
+    # --- Apply keyword processing to the extracted texts ---
+    final_reaction_pattern_text = extracted_reaction_pattern_text
+    final_core_drive_text = extracted_core_drive_text
+
+    if LLM_DATA_PREPROCESSOR_AVAILABLE and complete_preprocessing_pipeline_for_analyzer:
+        if isinstance(extracted_reaction_pattern_text, str) and not extracted_reaction_pattern_text.startswith("Reaction pattern analysis inconclusive") and not extracted_reaction_pattern_text.startswith("Analysis skipped") and not "Error:" in extracted_reaction_pattern_text:
+            final_reaction_pattern_text = complete_preprocessing_pipeline_for_analyzer(extracted_reaction_pattern_text)
+            # print(f"  DEBUG ({conv_id}) RP processed: '{extracted_reaction_pattern_text[:50]}...' -> '{final_reaction_pattern_text[:50]}...'") # Optional debug
+        elif not isinstance(extracted_reaction_pattern_text, str):
+            print(f"  警告 ({conv_id}): Reaction pattern text is not a string ('{type(extracted_reaction_pattern_text)}'), skipping keyword processing.")
+
+        if isinstance(extracted_core_drive_text, str) and not extracted_core_drive_text.startswith("Core drive analysis inconclusive") and not extracted_core_drive_text.startswith("Analysis skipped") and not "Error:" in extracted_core_drive_text:
+            final_core_drive_text = complete_preprocessing_pipeline_for_analyzer(extracted_core_drive_text)
+            # print(f"  DEBUG ({conv_id}) CD processed: '{extracted_core_drive_text[:50]}...' -> '{final_core_drive_text[:50]}...'") # Optional debug
+        elif not isinstance(extracted_core_drive_text, str):
+            print(f"  警告 ({conv_id}): Core drive text is not a string ('{type(extracted_core_drive_text)}'), skipping keyword processing.")
+    else:
+        if i < 2: # Print only for the first few items if processor is unavailable to avoid spam
+            print(f"  提示 ({conv_id}): complete_preprocessing_pipeline not available. Storing raw extracted text for clustering.")
+    # ---------------------------------------------------------
+
     current_analyzed_conv = {
         "conversation_id": conv_id,
-        "conversation_content": conversation_log_str,
-        REACTION_PATTERN_TEXT_FIELD: extracted_reaction_pattern_text,
-        CORE_DRIVE_TEXT_FIELD: extracted_core_drive_text
+        "conversation_content": conversation_log_str, # This is the processed log used for LLM input
+        REACTION_PATTERN_TEXT_FIELD: final_reaction_pattern_text,
+        CORE_DRIVE_TEXT_FIELD: final_core_drive_text
     }
     return current_analyzed_conv
 
@@ -372,8 +398,8 @@ if __name__ == '__main__':
             print(f"\nResult {i+1}:")
             print(f"  Conversation ID: {res.get('conversation_id')}")
             print(f"  Conversation Content (Snippet): {res.get('conversation_content', 'N/A')[:100]}...")
-            print(f"  Reaction Pattern Text: {res.get(REACTION_PATTERN_TEXT_FIELD, 'N/A')}")
-            print(f"  Core Drive Text: {res.get(CORE_DRIVE_TEXT_FIELD, 'N/A')}")
+            print(f"  Reaction Pattern Text (Keywords): {res.get(REACTION_PATTERN_TEXT_FIELD, 'N/A')}")
+            print(f"  Core Drive Text (Keywords): {res.get(CORE_DRIVE_TEXT_FIELD, 'N/A')}")
 
         save_intermediate_analysis(OUTPUT_DATA_PATH, analyzed_results)
     else:
